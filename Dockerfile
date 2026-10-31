@@ -29,11 +29,12 @@ COPY --from=frontend /build/dist ./frontend/dist
 ENV FRONTEND_DIST=/app/frontend/dist
 
 RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown app:app /data
-USER app
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 VOLUME ["/data"]
 EXPOSE 8000
 
 HEALTHCHECK --interval=60s --timeout=5s --retries=3 CMD curl -fsS http://127.0.0.1:8000/api/health || exit 1
 
 # Un seul worker : le planificateur des factures récurrentes tourne dans le processus.
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

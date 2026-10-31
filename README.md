@@ -139,6 +139,9 @@ git pull && docker compose up -d --build
 
 Le schéma de la base est mis à jour automatiquement au démarrage (Alembic).
 
+Au démarrage, le conteneur corrige les droits du dossier `./data` (créé en root par Docker s'il n'existait pas) puis
+lance l'application avec un utilisateur non privilégié (uid/gid `PUID`/`PGID`, 1000 par défaut).
+
 ### Gmail : mot de passe d'application
 
 1. Active la validation en 2 étapes sur le compte Google.
