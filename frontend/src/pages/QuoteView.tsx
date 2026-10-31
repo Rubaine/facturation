@@ -204,6 +204,7 @@ export default function QuoteView() {
         open={sending}
         onClose={() => setSending(false)}
         title={`Envoyer le devis ${q.number ?? ''}`}
+        htmlPreviewUrl={`/api/quotes/${id}/email/html`}
         previewUrl={`/api/quotes/${id}/email`}
         sendUrl={`/api/quotes/${id}/send`}
         warning={isDraft ? 'Le devis va être finalisé (numéro définitif) avant l’envoi.' : undefined}

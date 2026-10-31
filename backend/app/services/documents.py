@@ -14,6 +14,7 @@ from ..config import get_settings
 from ..models import Client, Invoice, Quote
 from . import numbering
 from .app_settings import AppSettings, load_settings, seller_snapshot
+from .email_html import LOGO_CID, EmailExtras, logo_bytes, payment_text, render_email, render_preview
 from .mailer import MailError, render_template, send_mail, split_addresses  # noqa: F401
 from .pdf import build_invoice_pdf, build_quote_pdf, fdate, fmoney
 from .totals import apply_lines
@@ -233,6 +234,57 @@ def invoice_email(db: Session, inv: Invoice, purpose: str = "send") -> dict:
     }
 
 
+def invoice_email_extras(db: Session, inv: Invoice, settings: AppSettings, purpose: str = "send") -> EmailExtras:
+    label = invoice_kind_label(inv)
+    number = inv.number or numbering.preview_next(db, settings, inv.kind, inv.issue_date)
+    rows = [("Date d'émission", fdate(inv.issue_date), False)]
+    if inv.kind == "invoice":
+        overdue = inv.status == "issued" and inv.due_date < today()
+        rows.append(("Échéance", fdate(inv.due_date) + (" (dépassée)" if overdue else ""), overdue))
+    if inv.service_start and inv.service_end:
+        rows.append(("Période", f"{fdate(inv.service_start)} → {fdate(inv.service_end)}", False))
+    if inv.credit_note_of_id:
+        origin = db.get(Invoice, inv.credit_note_of_id)
+        if origin:
+            rows.append(("Facture d'origine", origin.number or "", False))
+    payment = None
+    if inv.kind == "invoice" and settings.bank.iban:
+        payment = {
+            "bank_name": settings.bank.bank_name,
+            "iban": settings.bank.iban,
+            "bic": settings.bank.bic,
+            "reference": number,
+        }
+    return EmailExtras(
+        doc_label="Relance" if purpose == "reminder" else label,
+        card={
+            "label": label,
+            "number": f"N° {number}",
+            "title": inv.title,
+            "amount_label": "Montant de l'avoir" if inv.kind == "credit_note" else "Montant à régler",
+            "amount": fmoney(inv.total_ttc),
+            "rows": rows,
+        },
+        payment=payment,
+        attachment_name=invoice_filename(inv) if inv.number else f"{label}-{number}.pdf",
+        preheader=f"{label} {number} - {fmoney(inv.total_ttc)}",
+    )
+
+
+def _with_payment_text(body: str, extras: EmailExtras) -> str:
+    return body.rstrip() + "\n\n" + payment_text(extras.payment) if extras.payment else body
+
+
+def _inline_logo(settings: AppSettings) -> list[tuple[str, bytes, str]]:
+    logo = logo_bytes(settings)
+    return [(LOGO_CID, logo[0], logo[1])] if logo else []
+
+
+def invoice_email_html_preview(db: Session, inv: Invoice, subject: str, body: str, purpose: str = "send") -> str:
+    settings = load_settings(db)
+    return render_preview(settings, subject, body, invoice_email_extras(db, inv, settings, purpose))
+
+
 def send_invoice(db: Session, inv: Invoice, overrides: dict | None = None, purpose: str = "send") -> str:
     if inv.number is None:
         raise HTTPException(400, "Émets la facture avant de l'envoyer.")
@@ -241,12 +293,15 @@ def send_invoice(db: Session, inv: Invoice, overrides: dict | None = None, purpo
         if v is not None:
             mail[k] = v
     settings = load_settings(db)
+    extras = invoice_email_extras(db, inv, settings, purpose)
     status = send_mail(
         db,
         to=split_addresses(mail["to"]),
         cc=split_addresses(mail["cc"]),
         subject=mail["subject"],
-        body=mail["body"],
+        body=_with_payment_text(mail["body"], extras),
+        html=render_email(settings, mail["subject"], mail["body"], extras),
+        inline_images=_inline_logo(settings),
         attachments=[(invoice_filename(inv), invoice_pdf(db, inv), "application/pdf")],
         sender_name=settings.company.name,
         doc_type="invoice",
@@ -333,6 +388,34 @@ def quote_email(db: Session, q: Quote) -> dict:
     }
 
 
+def quote_email_extras(db: Session, q: Quote, settings: AppSettings) -> EmailExtras:
+    number = q.number or numbering.preview_next(db, settings, "quote", q.issue_date)
+    url = quote_public_url(q) if q.public_token else "#"
+    return EmailExtras(
+        doc_label="Devis",
+        card={
+            "label": "Devis",
+            "number": f"N° {number}",
+            "title": q.title,
+            "amount_label": "Montant",
+            "amount": fmoney(q.total_ttc),
+            "rows": [
+                ("Date", fdate(q.issue_date), False),
+                ("Valable jusqu'au", fdate(q.valid_until), False),
+            ],
+        },
+        cta={"label": "Consulter et accepter le devis", "url": url, "color": "#059669"},
+        attachment_name=quote_filename(q) if q.number else f"Devis-{number}.pdf",
+        preheader=f"Devis {number} - {fmoney(q.total_ttc)}",
+        hide_urls=[url, LINK_PLACEHOLDER],
+    )
+
+
+def quote_email_html_preview(db: Session, q: Quote, subject: str, body: str) -> str:
+    settings = load_settings(db)
+    return render_preview(settings, subject, body, quote_email_extras(db, q, settings))
+
+
 def send_quote(db: Session, q: Quote, overrides: dict | None = None) -> str:
     finalize_quote(db, q)
     mail = quote_email(db, q)
@@ -347,6 +430,8 @@ def send_quote(db: Session, q: Quote, overrides: dict | None = None) -> str:
         cc=split_addresses(mail["cc"]),
         subject=mail["subject"],
         body=mail["body"],
+        html=render_email(settings, mail["subject"], mail["body"], quote_email_extras(db, q, settings)),
+        inline_images=_inline_logo(settings),
         attachments=[(quote_filename(q), quote_pdf(db, q), "application/pdf")],
         sender_name=settings.company.name,
         doc_type="quote",

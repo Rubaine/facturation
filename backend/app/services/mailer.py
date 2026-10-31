@@ -44,6 +44,8 @@ def send_mail(
     subject: str,
     body: str,
     cc: list[str] | None = None,
+    html: str | None = None,
+    inline_images: list[tuple[str, bytes, str]] | None = None,
     attachments: list[tuple[str, bytes, str]] | None = None,
     sender_name: str = "",
     doc_type: str = "test",
@@ -65,6 +67,13 @@ def send_mail(
     msg["Message-ID"] = make_msgid(domain=from_addr.split("@")[-1])
     msg["Reply-To"] = from_addr
     msg.set_content(body)
+    if html:
+        # Version HTML (la version texte reste pour les messageries qui n'affichent pas le HTML)
+        msg.add_alternative(html, subtype="html")
+        html_part = msg.get_payload()[-1]
+        for cid, content, subtype in inline_images or []:
+            if f"cid:{cid}" in html:
+                html_part.add_related(content, maintype="image", subtype=subtype, cid=f"<{cid}>")
     for filename, content, mime in attachments or []:
         maintype, subtype = mime.split("/", 1)
         msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)

@@ -11,6 +11,7 @@ from ..models import EmailLog, Invoice, Quote
 from ..schemas import EmailLogOut, EmailPreview, InvoiceOut, QuoteIn, QuoteOut, SendIn
 from ..services import documents
 from ..services.app_settings import load_settings
+from ..services.email_html import EmailExtras, render_email
 from ..services.mailer import MailError
 from ..services.pdf import fdate, fmoney
 from ..services.totals import apply_lines
@@ -106,6 +107,17 @@ def email_preview(quote_id: int, db: Session = Depends(get_db)):
     q = get_quote_or_404(db, quote_id)
     mail = documents.quote_email(db, q)
     return EmailPreview(**mail, smtp_configured=get_settings().smtp_configured)
+
+
+class HtmlPreviewIn(BaseModel):
+    subject: str = ""
+    body: str = ""
+
+
+@router.post("/{quote_id}/email/html")
+def email_html_preview(quote_id: int, data: HtmlPreviewIn, db: Session = Depends(get_db)):
+    q = get_quote_or_404(db, quote_id)
+    return {"html": documents.quote_email_html_preview(db, q, data.subject, data.body)}
 
 
 @router.post("/{quote_id}/send", response_model=QuoteOut)
@@ -238,17 +250,28 @@ def _notify_owner(db: Session, q: Quote) -> None:
     owner = settings.company.email
     if not owner:
         return
+    subject = f"Devis {q.number} accepté par {q.client.name}"
+    body = (
+        f"Bonne nouvelle !\n\nLe devis {q.number} ({q.title or 'sans titre'}) vient d'être accepté en ligne "
+        f"par {q.accepted_by} ({q.client.name}).\n\nTu peux maintenant le transformer en facture."
+    )
+    url = f"{get_settings().public_url.rstrip('/')}/devis/{q.id}"
+    extras = EmailExtras(
+        doc_label="Devis accepté",
+        card={
+            "label": "Devis accepté", "number": f"N° {q.number}", "title": q.title,
+            "amount_label": "Montant", "amount": fmoney(q.total_ttc),
+            "rows": [("Client", q.client.name, False), ("Accepté par", q.accepted_by, False)],
+        },
+        cta={"label": "Ouvrir le devis", "url": url, "color": None},
+    )
     try:
         send_mail(
             db,
             to=[owner],
-            subject=f"Devis {q.number} accepté par {q.client.name}",
-            body=(
-                f"Bonne nouvelle !\n\nLe devis {q.number} ({q.title or 'sans titre'}) d'un montant de "
-                f"{fmoney(q.total_ttc)} vient d'être accepté en ligne par {q.accepted_by} "
-                f"({q.client.name}).\n\nTu peux le transformer en facture depuis l'application :\n"
-                f"{get_settings().public_url.rstrip('/')}/devis/{q.id}"
-            ),
+            subject=subject,
+            body=f"{body}\n\n{url}",
+            html=render_email(settings, subject, body, extras),
             doc_type="quote",
             doc_id=q.id,
             purpose="notification",

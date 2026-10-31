@@ -221,6 +221,7 @@ export default function InvoiceView() {
         open={sending !== null}
         onClose={() => setSending(null)}
         title={sending === 'reminder' ? `Relancer ${inv.client_name}` : `Envoyer ${label.toLowerCase()} ${inv.number ?? ''}`}
+        htmlPreviewUrl={`/api/invoices/${id}/email/html?purpose=${sending ?? 'send'}`}
         previewUrl={`/api/invoices/${id}/email?purpose=${sending ?? 'send'}`}
         sendUrl={`/api/invoices/${id}/send?purpose=${sending ?? 'send'}`}
         confirmLabel={isDraft ? 'Émettre et envoyer' : 'Envoyer'}

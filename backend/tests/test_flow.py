@@ -221,3 +221,40 @@ def test_partial_credit_notes_capped(client, company_client):
     client.put(f"/api/invoices/{second['id']}", json=payload)
     assert client.post(f"/api/invoices/{second['id']}/issue").status_code == 200
     assert client.get(f"/api/invoices/{inv['id']}").json()["status"] == "cancelled"
+
+
+def test_html_emails(client, company_client, tmp_path):
+    import email
+    from email import policy
+
+    inv = _invoice(client, company_client["id"])
+    preview = client.get(f"/api/invoices/{inv['id']}/email").json()
+    assert "IBAN" not in preview["body"]  # le bloc de paiement est ajouté automatiquement
+    html = client.post(f"/api/invoices/{inv['id']}/email/html", json=preview).json()["html"]
+    assert "Règlement par virement" in html and "FR76 2823" in html
+    client.post(f"/api/invoices/{inv['id']}/send", json={})
+    msg = email.message_from_bytes(next((tmp_path / "outbox").glob("*.eml")).read_bytes(), policy=policy.default)
+    text = msg.get_body(("plain",)).get_content()
+    html = msg.get_body(("html",)).get_content()
+    assert "IBAN : FR76" in text
+    assert "<table" in html and "Montant à régler" in html and "5,00" in html
+    number = client.get(f"/api/invoices/{inv['id']}").json()["number"]
+    assert [p.get_filename() for p in msg.iter_attachments()] == [f"Facture-{number}.pdf"]
+
+    # Logo intégré en pièce inline (cid)
+    s = client.get("/api/settings").json()
+    s["company"]["logo_data_url"] = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    client.put("/api/settings", json=s)
+    q = client.post("/api/quotes", json={
+        "client_id": company_client["id"], "issue_date": str(TODAY), "valid_until": str(TODAY + timedelta(days=30)),
+        "title": "Site", "lines": LINES,
+    }).json()
+    client.post(f"/api/quotes/{q['id']}/send", json={})
+    eml = sorted((tmp_path / "outbox").glob("*quote*.eml"))[-1]
+    msg = email.message_from_bytes(eml.read_bytes(), policy=policy.default)
+    html_part = msg.get_body(("html",))
+    html = html_part.get_content()
+    token = client.get(f"/api/quotes/{q['id']}").json()["public_token"]
+    assert "Consulter et accepter le devis" in html and f"/p/devis/{token}" in html
+    assert "cid:logo-entreprise" in html
+    assert any(p.get("Content-ID") == "<logo-entreprise>" for p in msg.walk())

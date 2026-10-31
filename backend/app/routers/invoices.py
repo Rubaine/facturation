@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -143,6 +144,17 @@ def email_preview(invoice_id: int, purpose: str = "send", db: Session = Depends(
     inv = get_invoice_or_404(db, invoice_id)
     mail = documents.invoice_email(db, inv, purpose)
     return EmailPreview(**mail, smtp_configured=get_settings().smtp_configured)
+
+
+class HtmlPreviewIn(BaseModel):
+    subject: str = ""
+    body: str = ""
+
+
+@router.post("/{invoice_id}/email/html")
+def email_html_preview(invoice_id: int, data: HtmlPreviewIn, purpose: str = "send", db: Session = Depends(get_db)):
+    inv = get_invoice_or_404(db, invoice_id)
+    return {"html": documents.invoice_email_html_preview(db, inv, data.subject, data.body, purpose)}
 
 
 @router.post("/{invoice_id}/send", response_model=InvoiceOut)

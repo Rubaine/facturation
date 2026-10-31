@@ -78,22 +78,26 @@ class EmailTemplate(BaseModel):
     body: str
 
 
+SIGNATURE = "\n\nBien cordialement,\n{entreprise}"
+
+
 def _default_emails() -> dict[str, EmailTemplate]:
-    signature = "\n\nBien cordialement,\n{entreprise}\n{email_entreprise}"
+    # Les coordonnées bancaires et le récapitulatif (n°, montant, échéance) sont ajoutés
+    # automatiquement sous le message : inutile de les écrire ici.
     return {
         "invoice": EmailTemplate(
             subject="Facture {numero} - {titre}",
             body=(
                 "Bonjour {client_contact},\n\nVeuillez trouver ci-joint la facture {numero} "
                 "d'un montant de {montant}, à régler avant le {echeance}.\n\n"
-                "Règlement par virement :\nIBAN : {iban}\nBIC : {bic}" + signature
+                "Merci pour votre confiance." + SIGNATURE
             ),
         ),
         "credit_note": EmailTemplate(
             subject="Avoir {numero}",
             body=(
                 "Bonjour {client_contact},\n\nVeuillez trouver ci-joint l'avoir {numero} "
-                "d'un montant de {montant}, relatif à la facture {facture_origine}." + signature
+                "d'un montant de {montant}, relatif à la facture {facture_origine}." + SIGNATURE
             ),
         ),
         "quote": EmailTemplate(
@@ -101,7 +105,8 @@ def _default_emails() -> dict[str, EmailTemplate]:
             body=(
                 "Bonjour {client_contact},\n\nVeuillez trouver ci-joint le devis {numero} "
                 "d'un montant de {montant}, valable jusqu'au {validite}.\n\n"
-                "Vous pouvez le consulter et l'accepter en ligne ici :\n{lien}" + signature
+                "Vous pouvez le consulter et l'accepter en ligne grâce au lien ci-dessous.\n{lien}\n\n"
+                "Je reste à votre disposition pour toute question." + SIGNATURE
             ),
         ),
         "reminder": EmailTemplate(
@@ -110,11 +115,36 @@ def _default_emails() -> dict[str, EmailTemplate]:
                 "Bonjour {client_contact},\n\nSauf erreur de ma part, la facture {numero} "
                 "d'un montant de {montant}, arrivée à échéance le {echeance}, n'a pas encore été "
                 "réglée. Je vous la joins de nouveau.\n\nSi le paiement a déjà été effectué, "
-                "merci de ne pas tenir compte de ce message.\n\n"
-                "Règlement par virement :\nIBAN : {iban}\nBIC : {bic}" + signature
+                "merci de ne pas tenir compte de ce message." + SIGNATURE
             ),
         ),
     }
+
+
+# Anciens modèles par défaut (v1) : remplacés automatiquement s'ils n'ont pas été personnalisés.
+_OLD_SIGNATURE = "\n\nBien cordialement,\n{entreprise}\n{email_entreprise}"
+_OLD_BANK = "Règlement par virement :\nIBAN : {iban}\nBIC : {bic}"
+LEGACY_DEFAULT_BODIES = {
+    "invoice": (
+        "Bonjour {client_contact},\n\nVeuillez trouver ci-joint la facture {numero} "
+        "d'un montant de {montant}, à régler avant le {echeance}.\n\n" + _OLD_BANK + _OLD_SIGNATURE
+    ),
+    "credit_note": (
+        "Bonjour {client_contact},\n\nVeuillez trouver ci-joint l'avoir {numero} "
+        "d'un montant de {montant}, relatif à la facture {facture_origine}." + _OLD_SIGNATURE
+    ),
+    "quote": (
+        "Bonjour {client_contact},\n\nVeuillez trouver ci-joint le devis {numero} "
+        "d'un montant de {montant}, valable jusqu'au {validite}.\n\n"
+        "Vous pouvez le consulter et l'accepter en ligne ici :\n{lien}" + _OLD_SIGNATURE
+    ),
+    "reminder": (
+        "Bonjour {client_contact},\n\nSauf erreur de ma part, la facture {numero} "
+        "d'un montant de {montant}, arrivée à échéance le {echeance}, n'a pas encore été "
+        "réglée. Je vous la joins de nouveau.\n\nSi le paiement a déjà été effectué, "
+        "merci de ne pas tenir compte de ce message.\n\n" + _OLD_BANK + _OLD_SIGNATURE
+    ),
+}
 
 
 class ThresholdSettings(BaseModel):
@@ -140,9 +170,11 @@ def load_settings(db: Session) -> AppSettings:
     if row is None:
         return AppSettings()
     data = AppSettings.model_validate(row.value)
-    # Complète les modèles de mail manquants (ajoutés dans une version ultérieure).
+    # Complète les modèles manquants et met à jour les anciens modèles par défaut non personnalisés.
     for k, v in _default_emails().items():
-        data.emails.setdefault(k, v)
+        current = data.emails.get(k)
+        if current is None or current.body == LEGACY_DEFAULT_BODIES.get(k):
+            data.emails[k] = v
     return data
 
 

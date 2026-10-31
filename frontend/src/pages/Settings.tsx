@@ -387,6 +387,11 @@ function EmailsTab({ form, setForm }: { form: AppSettings; setForm: (f: AppSetti
         )}
       </Card>
       <InfoBox>
+        Les mails partent en HTML mis en forme : ton texte est complété automatiquement par un récapitulatif (n°, montant, échéance), les
+        coordonnées bancaires (factures et relances), un bouton « Consulter et accepter » (devis) et ton logo s'il est défini. Inutile donc
+        d'écrire l'IBAN dans le texte. Utilise « Aperçu du mail » dans la fenêtre d'envoi pour voir le rendu.
+      </InfoBox>
+      <InfoBox>
         Variables disponibles : <code>{'{numero}'}</code> <code>{'{titre}'}</code> <code>{'{montant}'}</code> <code>{'{echeance}'}</code> <code>{'{validite}'}</code>{' '}
         <code>{'{date}'}</code> <code>{'{client}'}</code> <code>{'{client_contact}'}</code> <code>{'{entreprise}'}</code> <code>{'{email_entreprise}'}</code>{' '}
         <code>{'{iban}'}</code> <code>{'{bic}'}</code> <code>{'{lien}'}</code> (devis) <code>{'{facture_origine}'}</code> (avoir).

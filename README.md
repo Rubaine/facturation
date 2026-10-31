@@ -6,7 +6,7 @@ Plateforme perso de **devis**, **factures** et **facturation récurrente** pour 
 - **Front** : React + TypeScript + Vite + Tailwind CSS
 - **Back** : Python FastAPI + SQLite (SQLAlchemy / Alembic)
 - **PDF** : WeasyPrint (PDF/A-3) + XML Factur-X embarqué (bibliothèque `factur-x`)
-- **Mails** : SMTP (Gmail avec mot de passe d'application)
+- **Mails** : SMTP (Gmail avec mot de passe d'application), mails HTML mis en forme + version texte
 - **Tâches automatiques** : APScheduler (factures récurrentes chaque matin, sauvegarde quotidienne de la base)
 
 ## Fonctionnalités
@@ -18,6 +18,7 @@ Plateforme perso de **devis**, **factures** et **facturation récurrente** pour 
 | **Factures** | Brouillon → émise (numéro définitif + PDF Factur-X archivé, non modifiable) → envoyée → payée. Relances, duplication, **avoirs** pour annuler/corriger, téléchargement du XML. |
 | **Récurrences** | Modèle par client (mensuel, trimestriel, annuel…), objet dynamique (`Hébergement - {Mois} {annee}`), période facturée, génération + émission + **envoi automatique** le jour J, rattrapage si le serveur était éteint. |
 | **Tableau de bord** | CA encaissé / facturé par mois, impayés, retards, devis en attente, progression vers les seuils (franchise TVA, plafond micro). |
+| **Mails** | HTML soigné (compatible Gmail/Outlook/mobile) : ton texte + récapitulatif (n°, montant, échéance), coordonnées bancaires, bouton « Consulter et accepter » pour les devis, logo. Aperçu avant envoi. |
 | **Paramètres** | Infos entreprise, IBAN, logo, mentions légales, formats de numérotation et compteurs, modèles de mails, test d'envoi. |
 
 ### Règles légales intégrées

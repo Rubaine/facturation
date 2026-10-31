@@ -10,6 +10,7 @@ from ..schemas import CounterState, CounterUpdate, EmailLogOut
 from ..services import numbering
 from ..services.app_settings import AppSettings, load_settings, save_settings
 from ..services.documents import today
+from ..services.email_html import EmailExtras, render_email
 from ..services.mailer import MailError, send_mail
 
 router = APIRouter(prefix="/api/settings", tags=["paramètres"])
@@ -77,11 +78,24 @@ class TestMailIn(BaseModel):
 @router.post("/test-email")
 def test_email(data: TestMailIn, db: Session = Depends(get_db)):
     try:
+        settings = load_settings(db)
+        subject = "Test d'envoi - Facturation"
+        body = (
+            "Bonjour,\n\nCeci est un mail de test envoyé depuis ton application de facturation. "
+            "Si tu le lis, l'envoi fonctionne !"
+        )
+        demo = EmailExtras(
+            doc_label="Test",
+            card={"label": "Exemple", "number": "N° 26-01-01", "title": "Aperçu du récapitulatif",
+                  "amount_label": "Montant", "amount": "123,45 €", "rows": [("Échéance", "31/01/2026", False)]},
+        )
         status = send_mail(
             db,
             to=[data.to],
-            subject="Test d'envoi - Facturation",
-            body="Ceci est un mail de test envoyé depuis ton application de facturation. Tout fonctionne !",
+            subject=subject,
+            body=body,
+            html=render_email(settings, subject, body, demo),
+            sender_name=settings.company.name,
             doc_type="test",
             purpose="test",
         )
