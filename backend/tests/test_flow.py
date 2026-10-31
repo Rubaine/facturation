@@ -200,3 +200,24 @@ def test_settings_and_counters(client):
     assert inv["preview"] == f"F-{TODAY.year}-42"
     s["numbering"]["invoice_pattern"] = "F-{AAAA}"
     assert client.put("/api/settings", json=s).status_code == 400
+
+
+def test_partial_credit_notes_capped(client, company_client):
+    inv = _invoice(client, company_client["id"], lines=[{"description": "Dev", "quantity": "1", "unit_price": "100"}])
+    client.post(f"/api/invoices/{inv['id']}/issue")
+    credit = client.post(f"/api/invoices/{inv['id']}/credit-note").json()
+    payload = {
+        "client_id": credit["client_id"], "issue_date": credit["issue_date"], "due_date": credit["due_date"],
+        "title": credit["title"], "lines": [{"description": "Remise", "quantity": "1", "unit_price": "40"}],
+    }
+    assert client.put(f"/api/invoices/{credit['id']}", json=payload).status_code == 200
+    assert client.post(f"/api/invoices/{credit['id']}/issue").status_code == 200
+    assert client.get(f"/api/invoices/{inv['id']}").json()["status"] == "issued"  # avoir partiel
+
+    second = client.post(f"/api/invoices/{inv['id']}/credit-note").json()  # reprend 100 € : trop
+    r = client.post(f"/api/invoices/{second['id']}/issue")
+    assert r.status_code == 400 and "dépasserait" in r.json()["detail"]
+    payload["lines"][0]["unit_price"] = "60"
+    client.put(f"/api/invoices/{second['id']}", json=payload)
+    assert client.post(f"/api/invoices/{second['id']}/issue").status_code == 200
+    assert client.get(f"/api/invoices/{inv['id']}").json()["status"] == "cancelled"

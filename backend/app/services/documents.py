@@ -107,6 +107,22 @@ def issue_invoice(db: Session, inv: Invoice, settings: AppSettings | None = None
 
     # Recalcule les montants avec le régime de TVA actuel
     apply_lines(inv, inv.lines, settings.invoicing.vat_franchise)
+    if inv.kind == "credit_note" and inv.credit_note_of_id:
+        origin_inv = db.get(Invoice, inv.credit_note_of_id)
+        already = sum(
+            (c.total_ttc for c in db.scalars(
+                select(Invoice).where(
+                    Invoice.credit_note_of_id == origin_inv.id, Invoice.number.is_not(None)
+                )
+            )),
+            Decimal("0"),
+        )
+        if already + inv.total_ttc > origin_inv.total_ttc:
+            raise HTTPException(
+                400,
+                f"Le total des avoirs ({fmoney(already + inv.total_ttc)}) dépasserait le montant de la "
+                f"facture {origin_inv.number} ({fmoney(origin_inv.total_ttc)}).",
+            )
     inv.seller_snapshot = seller_snapshot(settings)
     inv.client_snapshot = client_snapshot(client)
     inv.number = numbering.take_number(db, settings, seq, inv.issue_date)
