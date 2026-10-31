@@ -1,0 +1,13 @@
+services:
+  facturation:
+    build: .
+    image: facturation:latest
+    container_name: facturation
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Base de données, PDF archivés, sauvegardes : À SAUVEGARDER.
+      - ./data:/data
+    ports:
+      # Exposé uniquement en local : à mettre derrière ton reverse proxy (HTTPS).
+      - "127.0.0.1:8000:8000"
